@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SyndiQ – KYC Upload → AI Credit Score → Bank Network</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<!-- pdf.js (client-side PDF reading) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+</script>
+
+<style>
+  :root{
+    --primary:#0d47a1; --primary2:#2157d6;
+    --ink:#072f57; --muted:#5b758a; --card:rgba(255,255,255,0.96);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0; font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;}
+
+  /* Background image */
+  body{
+    min-height:100vh;
+    background: url('background.png') center/cover no-repeat fixed;
+    color:#0b2946;
+    display:flex; justify-content:center; align-items:flex-start;
+    padding:32px 24px 80px;
+  }
+
+  /* --- Top-left logo bar --- */
+  .logo-bar {
+    position: fixed;
+    top: 0px;
+    left: 7px;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-bar .logo-icon {
+    height: 120px;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+  .logo-bar .logo-word {
+    height: 160px;
+    margin-left: -110px;
+    margin-top: 15px; /* Yazıyı logonun ortasına hizalar */
+    display: block;
+  }
+
+  /* Page grid */
+  .wrap{ width:100%; max-width:1180px; display:grid; grid-template-columns: 480px 1fr; gap:24px; }
+  .panel{ background:var(--card); border-radius:16px; padding:18px; box-shadow:0 14px 36px rgba(2,6,23,.22); }
+  h2,h3{ margin:0 0 10px 0; color:var(--ink); }
+  .muted{ color:var(--muted); font-size:13px; }
+  label{ display:block; margin-top:10px; font-size:13px; color:#334e63; }
+  input,select{ width:100%; padding:10px 12px; margin-top:6px; border-radius:10px; border:1px solid #d5dbe6; font-size:14px }
+  input[type=file]{ padding:10px }
+  button{ border:0; cursor:pointer; border-radius:10px; font-weight:700 }
+  .btn{ padding:11px 14px; color:#fff; background:linear-gradient(90deg,var(--primary),var(--primary2)); }
+  .btn-ghost{ padding:10px 12px; background:#fff; color:var(--primary); border:1px solid rgba(13,71,161,.18) }
+
+  .badge{ display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#e8f1ff; color:#0a3a99; border:1px solid #cfe1ff }
+  .file-ok{ color:#0b7a3f; font-size:12px }
+  .file-miss{ color:#9a1a1a; font-size:12px }
+
+  .sep{ border:none; border-top:1px solid rgba(0,0,0,.08); margin:16px 0 }
+  .company-card{ border-radius:12px; padding:14px; background:linear-gradient(180deg, rgba(13,71,161,.06), rgba(13,71,161,.02)); border:1px solid rgba(13,71,161,.08) }
+
+  table{ width:100%; border-collapse:collapse; font-size:14px }
+  th,td{ padding:10px; border-bottom:1px solid rgba(0,0,0,.06); text-align:left }
+
+  /* Steps */
+  .steps{ display:flex; align-items:center; gap:12px; margin:0 0 12px 0 }
+  .step{ display:flex; align-items:center; gap:8px }
+  .dot{ height:26px; width:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; background:#b7c7e9 }
+  .step.active .dot{ background:linear-gradient(90deg,var(--primary),var(--primary2)) }
+  .step .label{ color:#10355c; font-weight:700 }
+  .bar{ height:3px; width:38px; background:#b7c7e9; border-radius:2px }
+  .bar.active{ background:linear-gradient(90deg,var(--primary),var(--primary2)) }
+
+  .loader{ display:none; gap:8px; align-items:center; color:var(--muted); font-size:13px }
+  .spinner{ width:16px; height:16px; border:3px solid #d2e1ff; border-top-color:#2261ff; border-radius:50%; animation:spin .8s linear infinite }
+  @keyframes spin{ to{ transform: rotate(360deg) } }
+
+  .modal-back{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:20px; z-index:999 }
+  .modal{ background:#fff; width:min(900px,96vw); border-radius:14px; box-shadow:0 24px 60px rgba(0,0,0,.35); max-height:90vh; overflow:auto }
+  .modal header{ display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid rgba(0,0,0,.06) }
+  .modal .body{ padding:16px 18px }
+
+  @media (max-width:1020px){
+    .wrap{ grid-template-columns:1fr }
+    .logo-bar .logo-icon{ height:60px; }
+    .logo-bar .logo-word{ height:28px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Top-left fixed logo -->
+<div class="logo-bar">
+  <img src="SQ_logo.png" alt="SyndiQ Logo" class="logo-icon">
+  <img src="SQ_text.png" alt="SyndiQ Text" class="logo-word">
+</div>
+
+<div class="wrap">
+
+  <!-- LEFT: KYC + Company + Score -->
+  <div class="panel">
+    <div class="steps">
+      <div class="step active" id="s1"><div class="dot">1</div><div class="label">KYC Upload</div></div>
+      <div class="bar" id="b12"></div>
+      <div class="step" id="s2"><div class="dot">2</div><div class="label">Company & Score</div></div>
+      <div class="bar" id="b23"></div>
+      <div class="step" id="s3"><div class="dot">3</div><div class="label">Bank Network</div></div>
+    </div>
+
+    <h3>1) KYC & Documents</h3>
+    <div class="muted">Upload identity & business docs (demo only, files stay in your browser).</div>
+
+    <label>Passport / National ID (JPG/PNG/PDF)</label>
+    <input id="f_id" type="file" accept=".jpg,.jpeg,.png,.pdf">
+
+    <label>Business License (Živnostenský list) (JPG/PNG/PDF)</label>
+    <input id="f_license" type="file" accept=".jpg,.jpeg,.png,.pdf">
+
+    <label>Bank Statements – last 3 months (PDF, multiple)</label>
+    <input id="f_statements" type="file" accept=".pdf" multiple>
+
+    <div id="fileStatus" class="muted" style="margin-top:6px;">
+      <div>• ID: <span id="ok_id" class="file-miss">missing</span></div>
+      <div>• License: <span id="ok_license" class="file-miss">missing</span></div>
+      <div>• Statements: <span id="ok_stmt" class="file-miss">missing</span></div>
+      <div>• Bank text score: <span id="stmtScore" class="badge">—</span></div>
+    </div>
+
+    <div class="loader" id="loaderParse"><div class="spinner"></div><div>Reading bank statements…</div></div>
+
+    <hr class="sep">
+
+    <h3>2) Company Info</h3>
+    <div class="muted">Enter basic company details (for scoring demo).</div>
+
+    <label>Company name *</label>
+    <input id="c_name" placeholder="e.g. XYZ s.r.o.">
+
+    <label>Registration ID (IČO) *</label>
+    <input id="c_id" placeholder="e.g. 12345678">
+
+    <label>Sector *</label>
+    <select id="c_sector">
+      <option value="">Select…</option>
+      <option value="0">Retail / Services</option>
+      <option value="1">Food & Beverage</option>
+      <option value="2">IT / Software</option>
+      <option value="3">Manufacturing</option>
+      <option value="4">Other</option>
+    </select>
+
+    <label>Monthly revenue (€) *</label>
+    <input id="c_rev" type="number" placeholder="5000" min="0">
+
+    <label>Monthly expenses (€) *</label>
+    <input id="c_exp" type="number" placeholder="3800" min="0">
+
+    <label>Years in business *</label>
+    <input id="c_years" type="number" placeholder="2" min="0">
+
+    <!-- Yeni: Kullanıcının talep ettiği kredi tutarı -->
+    <label>Requested loan amount (€) *</label>
+    <input id="c_loan" type="number" placeholder="20000" min="1">
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+      <button class="btn" id="genScore">Generate Score</button>
+      <button class="btn-ghost" id="clearBtn">Clear</button>
+    </div>
+
+    <div class="loader" id="loader"><div class="spinner"></div><div>AI is analyzing…</div></div>
+
+    <hr class="sep">
+
+    <h3>Score</h3>
+    <div id="scoreBox" class="company-card">
+      <div id="noCompany" class="muted">Fill the form & upload docs, then generate score.</div>
+      <div id="companyProfile" style="display:none">
+        <div class="company-name" id="profName">Company Name</div>
+        <div style="margin-top:6px"><span class="badge" id="bandBadge">Grade —</span></div>
+        <div style="margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:8px">
+          <div><strong>Score</strong><br><span id="profScore">—</span></div>
+          <div><strong>PD</strong><br><span id="profPD">—</span>%</div>
+        </div>
+        <div style="margin-top:10px" id="profExplain" class="muted">—</div>
+        <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap">
+          <button class="btn" id="listBanks" style="background:#0b7a3f">List to Banks</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Bank Network -->
+  <div class="panel">
+    <h3>3) Bank Network / SyndiQ Dashboard</h3>
+    <div class="muted">Listed companies appear here. Banks view risk & send offers.</div>
+    <table>
+      <thead>
+        <tr><th>Company</th><th>Score</th><th>PD</th><th>Sector</th><th>Offers</th></tr>
+      </thead>
+      <tbody id="listedTable">
+        <tr class="center"><td colspan="5" class="muted">No companies listed yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- OFFERS MODAL -->
+<div class="modal-back" id="modalBack">
+  <div class="modal">
+    <header>
+      <div><strong>Bank Offers</strong> • <span id="modalCompany">—</span></div>
+      <button class="btn-ghost" id="closeModalBtn">Close</button>
+    </header>
+    <div class="body" id="offersBody"></div>
+  </div>
+</div>
+
+<script>
+let isLoading = false;
+let currentCompany = null;
+let listedCompanies = [];
+let bankTextScore = 0;
+
+const el = id => document.getElementById(id);
+const sectorName = i => ['Retail/Services','Food & Beverage','IT/Software','Manufacturing','Other'][i] || 'Other';
+
+function setStep(n){
+  ['s1','s2','s3'].forEach((id,i)=> el(id).classList.toggle('active', i < n));
+  ['b12','b23'].forEach((id,i)=> el(id).classList.toggle('active', i < (n-1)));
+}
+
+function markFile(okSpanId, file){
+  const s = el(okSpanId);
+  if(file){ s.textContent = 'uploaded'; s.className = 'file-ok'; }
+  else{ s.textContent = 'missing'; s.className = 'file-miss'; }
+}
+
+async function parseBankStatements(files){
+  bankTextScore = 0;
+  if(!files || files.length===0){ el('stmtScore').textContent = '—'; return; }
+  el('loaderParse').style.display='flex';
+  try{
+    if (!window.pdfjsLib) throw new Error('pdf.js not loaded');
+    const keywords = [/credit/i,/deposit/i,/incoming/i,/pr[ií]jem/i,/vklad/i,/prichod/i,/priliv/i,/kredit/i];
+    let hits = 0, chars = 0;
+    for(const f of files){
+      const buf = await f.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+      const limit = Math.min(pdf.numPages, 2);
+      for(let p=1;p<=limit;p++){
+        const page = await pdf.getPage(p);
+        const text = (await page.getTextContent()).items.map(i=>i.str).join(' ');
+        chars += text.length;
+        keywords.forEach(re=>{ const m = text.match(re); if(m) hits += m.length; });
+      }
+    }
+    bankTextScore = Math.min(100, Math.round(hits*10 + Math.log(chars+1)*3));
+    el('stmtScore').textContent = bankTextScore;
+  }catch(e){
+    console.error(e);
+    bankTextScore = 0;
+    el('stmtScore').textContent = '0';
+  }finally{
+    el('loaderParse').style.display='none';
+  }
+}
+
+el('f_id').addEventListener('change', e=> markFile('ok_id', e.target.files[0]));
+el('f_license').addEventListener('change', e=> markFile('ok_license', e.target.files[0]));
+el('f_statements').addEventListener('change', e=>{
+  markFile('ok_stmt', e.target.files && e.target.files.length>0);
+  parseBankStatements(e.target.files);
+});
+
+function validateForm(){
+  const name = el('c_name').value.trim();
+  const id   = el('c_id').value.trim();
+  const sec  = el('c_sector').value;
+  const rev  = Number(el('c_rev').value);
+  const exp  = Number(el('c_exp').value);
+  const yrs  = Number(el('c_years').value);
+  const loan = Number(el('c_loan').value);       // <-- yeni
+
+  if(!name || !id || sec===""){ alert('Please fill all required fields (*)'); return null; }
+  if([rev,exp,yrs].some(v => isNaN(v) || v < 0)){ alert('Revenue/Expenses/Years must be non-negative numbers.'); return null; }
+  if(!loan || loan <= 0){ alert('Please enter a positive loan amount.'); return null; }  // <-- yeni
+
+  const idOk  = el('f_id').files.length>0;
+  const licOk = el('f_license').files.length>0;
+  const stmOk = el('f_statements').files.length>0;
+  return {name,id,sector:Number(sec),rev,exp,years:yrs,loan,idOk,licOk,stmOk};  // <-- loan dahil
+}
+
+/* ====== Score calc (safe) ====== */
+function calcScore(data){
+  let {rev,exp,years,sector,idOk,licOk,stmOk} = data;
+  rev=+rev||0; exp=+exp||0; years=+years||0; sector=+sector||0;
+
+  let score = 600;
+  score += Math.log(Math.max(rev,1)+1)*12;
+  score -= (exp/Math.max(rev,1))*80;     // 0'a bölme güvenli
+  score += Math.min(years,10)*6;
+  score -= sector*6;
+
+  // docs bonus
+  let docsBonus=0; if(idOk) docsBonus+=10; if(licOk) docsBonus+=10;
+  if(stmOk) docsBonus+= Math.min(20, Math.floor(bankTextScore/5)); // 0–20
+  score += docsBonus;
+
+  score = Math.max(400,Math.min(850,score));
+  const pdRaw = (1/(1+Math.exp((score-650)/40)))*100;
+  const pd = isFinite(pdRaw)? +pdRaw.toFixed(2):50;
+  const band = score>740?'A':score>690?'B':score>640?'C':'D';
+  return {score:Math.round(score), pd, band, docsBonus};
+}
+
+/* ====== Generate Score ====== */
+el('genScore').onclick = async ()=>{
+  if(isLoading) return;
+  const data = validateForm(); if(!data) return;
+
+  isLoading = true;
+  el('genScore').disabled = true;
+  el('genScore').innerText = 'Calculating…';
+  el('loader').style.display='flex';
+
+  try{
+    await new Promise(r=>setTimeout(r,900)); // AI simülasyon
+    const out = calcScore(data);
+    currentCompany = {...data, ...out};
+
+    // render
+    el('noCompany').style.display='none';
+    el('companyProfile').style.display='block';
+    el('profName').innerText = `${currentCompany.name} (${currentCompany.id})`;
+    el('profScore').innerText = currentCompany.score;
+    el('profPD').innerText = currentCompany.pd;
+    el('bandBadge').innerText = `Grade ${currentCompany.band}`;
+    el('profExplain').innerHTML =
+      `<div>• Documents bonus: +${out.docsBonus} (statements score: ${bankTextScore})</div>
+       <div>• Cash flow: ${(data.rev-data.exp)>0 ? 'Positive' : 'Negative'}</div>
+       <div>• Years: ${data.years}</div>
+       <div>• Sector: ${sectorName(data.sector)}</div>`;
+    setStep(2);
+  }catch(e){
+    console.error(e);
+    alert('Unexpected error while calculating score.');
+  }finally{
+    el('loader').style.display='none';
+    el('genScore').disabled = false;
+    el('genScore').innerText = 'Generate Score';
+    isLoading = false;
+  }
+};
+
+/* ====== Clear ====== */
+el('clearBtn').onclick = ()=>{
+  currentCompany = null; bankTextScore=0; el('stmtScore').textContent='—';
+  ['c_name','c_id','c_rev','c_exp','c_years','c_loan'].forEach(id=> el(id).value='');  // loan temizle
+  el('c_sector').value='';
+  ['f_id','f_license','f_statements'].forEach(id=> el(id).value='');
+  markFile('ok_id',null); markFile('ok_license',null); markFile('ok_stmt',null);
+  el('companyProfile').style.display='none';
+  el('noCompany').style.display='block';
+  setStep(1);
+};
+
+/* ====== Bank network / offers ====== */
+el('listBanks').onclick = ()=>{
+  if(!currentCompany){ alert('Generate the score first.'); return; }
+  const listed = {
+    name: currentCompany.name, id: currentCompany.id,
+    score: currentCompany.score, pd: currentCompany.pd,
+    sector: currentCompany.sector, loan: currentCompany.loan,  // <-- loan eklendi
+    timestamp: new Date().toLocaleString()
+  };
+  listedCompanies.push(listed);
+  refreshListedTable();
+  openOffers(listed);
+  setStep(3);
+};
+
+function refreshListedTable(){
+  const tbody = el('listedTable');
+  tbody.innerHTML='';
+  if(listedCompanies.length===0){
+    tbody.innerHTML='<tr class="center"><td colspan="5" class="muted">No companies listed yet.</td></tr>';
+    return;
+  }
+  listedCompanies.forEach((c,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML =
+      `<td><strong>${c.name}</strong><div class="muted" style="font-size:12px">${c.id} • ${c.timestamp}</div></td>
+       <td>${c.score}</td><td>${c.pd}%</td><td>${sectorName(c.sector)}</td>
+       <td><button class="offer-btn" onclick="openOffersByIndex(${i})">View Offers</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* PD'ye göre kapasite ve faiz ayarlı teklif üretimi */
+function fakeOffersFor(c){
+  const req = Math.max(1, Math.round(c.loan || 0));
+
+  // ---- 1) PD tabanlı risk faktörü (kapasiteyi ölçekler)
+  // PD: 0% -> riskFactor ≈ 1.0 (kapasite tam)
+  // PD: 50% -> riskFactor ≈ 0.67
+  // PD: 80% -> riskFactor ≈ 0.47
+  // Alt sınırı çok kısmasın diye 0.35’e sabitliyoruz.
+  const pd = (typeof c.pd === 'number' ? c.pd : 30); // güvenli varsayılan
+  const riskFactor = Math.max(0.35, 1 - (pd / 150)); 
+
+  // ---- 2) Banka baz kapasiteleri (senin mantığınla uyumlu)
+  const banksBase = [
+    {bank:'Tatra Banka', baseCapFunc:(s)=>Math.min(30000, Math.max(4000, Math.round(s*32))), baseRate:3.0, term:'12m'},
+    {bank:'VÚB Banka',   baseCapFunc:(s)=>Math.min(26000, Math.max(3500, Math.round(s*28))), baseRate:3.2, term:'18m'},
+    {bank:'CSOB',        baseCapFunc:(s)=>Math.min(22000, Math.max(3000, Math.round(s*25))), baseRate:3.4, term:'12m'}
+  ];
+
+  // ---- 3) PD primini faize yansıt (PD yükseldikçe + faiz)
+  // örn. PD=30% => +1.0 puan; PD=60% => +2.0 puan gibi (pd/30)
+  const pdRateAdd = (pd / 30);
+
+  // ---- 4) Kapasiteleri hesapla (puan + riskFactor)
+  const banks = banksBase.map(b=>{
+    const baseCap = b.baseCapFunc(c.score || 650);
+    const cap = Math.round(baseCap * riskFactor);
+    return { bank:b.bank, cap: Math.max(0, cap), baseRate:b.baseRate, term:b.term };
+  });
+
+  // ---- 5) Kapasite oranında bölüştür
+  const totalCap = banks.reduce((s,b)=>s+b.cap,0) || 1;
+  let remaining = req;
+
+  const out = banks.map(b=>{
+    const target = Math.round(req * (b.cap / totalCap));
+    const amount = Math.min(b.cap, Math.max(0, Math.min(target, remaining)));
+    remaining -= amount;
+
+    // Skor kaynaklı temel indirim + PD primi
+    const scoreAdj = Math.max(1.0, (12 - (c.score||650)/115)); // senin önceki formülün
+    const rate = (b.baseRate + scoreAdj + pdRateAdd).toFixed(2);
+
+    return { bank:b.bank, amount, rate, term:b.term };
+  });
+
+  // artan pay varsa sırayla eklemeye çalış
+  for (let i=0; i<out.length && remaining>0; i++){
+    const spare = banks[i].cap - out[i].amount;
+    if (spare>0){
+      const add = Math.min(spare, remaining);
+      out[i].amount += add;
+      remaining -= add;
+    }
+  }
+
+  out.requested = req;
+  out.funded    = out.reduce((s,b)=>s+b.amount,0);
+  out.shortfall = Math.max(0, req - out.funded);
+  return out;
+}
+
+function openOffers(c){
+  el('modalCompany').innerText = `${c.name} (${c.id})`;
+  const offers = fakeOffersFor(c);
+
+  const summary = `
+    <div style="margin:8px 0 14px 0">
+      <strong>Requested:</strong> €${offers.requested.toLocaleString()} &nbsp;•&nbsp;
+      <strong>Funded:</strong> €${offers.funded.toLocaleString()}
+      ${offers.shortfall>0 ? `&nbsp;•&nbsp; <span style="color:#9a1a1a"><strong>Shortfall:</strong> €${offers.shortfall.toLocaleString()}</span>` : ''}
+    </div>
+  `;
+
+  el('offersBody').innerHTML =
+   `${summary}
+    <table>
+      <thead><tr><th>Bank</th><th>Amount</th><th>Rate (est.)</th><th>Term</th><th></th></tr></thead>
+      <tbody>
+        ${offers.map ? offers.map(o=>`
+          <tr>
+            <td>${o.bank}</td>
+            <td>€${o.amount.toLocaleString()}</td>
+            <td>${o.rate}%</td>
+            <td>${o.term}</td>
+            <td>${o.amount>0 ? `<button class="btn-ghost" onclick="acceptOffer('${o.bank}')">Accept</button>` : '<span class="muted">No capacity</span>'}</td>
+          </tr>
+        `).join('') : ''}
+      </tbody>
+    </table>`;
+  el('modalBack').style.display='flex';
+}
+function openOffersByIndex(i){ openOffers(listedCompanies[i]); }
+function acceptOffer(bank){ alert(`Demo: You accepted the offer from ${bank}. Next steps: KYC, contracts, disbursement.`); closeModal(); }
+function closeModal(){ el('modalBack').style.display='none'; }
+
+// modal kapatma: X/Close butonu ve arka plana tıklama
+el('closeModalBtn').addEventListener('click', closeModal);
+el('modalBack').addEventListener('click', (e)=>{
+  if (e.target.id === 'modalBack') closeModal();
+});
+</script>
+</body>
+</html>

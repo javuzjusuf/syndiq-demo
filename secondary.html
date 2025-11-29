@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SyndiQ – Secondary Market</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<style>
+  /* Background */
+  body {
+    font-family: Inter, Segoe UI, sans-serif;
+    background: url("background.png") center/cover no-repeat fixed;
+    color: #fff;
+    margin: 0;
+    padding: 40px 20px;
+  }
+
+  /* Top bar – sade versiyon */
+  .topbar {
+    max-width: 1000px;
+    margin: 0 auto 24px;
+    padding: 12px 20px;
+    background: rgba(255,255,255,0.96);   /* Artık mavi değil, beyaz panel gibi */
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #0b2946;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.18);
+  }
+
+  /* Logo */
+  .topbar .logo-icon {
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  /* SyndiQ text image */
+  .topbar .logo-word {
+    height: 26px;
+    margin-top: 2px;
+  }
+
+  /* Page title */
+  .topbar .title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-left: 10px;
+    color: #0b2946;
+    text-shadow: none;  /* Artık gölge yok */
+  }
+
+  /* Main content panel */
+  .panel {
+    background: rgba(255,255,255,0.95);
+    color: #0b2946;
+    border-radius: 16px;
+    padding: 22px;
+    max-width: 1000px;
+    margin: auto;
+    box-shadow: 0 12px 36px rgba(0,0,0,.25);
+    backdrop-filter: blur(4px);
+  }
+
+  h2 { 
+    margin-top: 0; 
+    font-size: 26px;
+    color: white;
+    text-shadow: 0 3px 6px rgba(0,0,0,.35);
+    text-align: center;
+    margin-bottom: 30px;
+  }
+
+  h3 {
+    margin-top: 18px;
+    margin-bottom: 8px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th,td {
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    padding: 10px;
+    text-align: left;
+  }
+
+  button {
+    border: 0;
+    border-radius: 8px;
+    background: #0d47a1;
+    color: #fff;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+
+  button:hover {
+    background: #0b3a85;
+  }
+
+  input, select {
+    width: 100%;
+    padding: 10px;
+    margin-top: 4px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+  }
+
+  .order-row {
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .order-row > * {
+    flex: 1;
+    min-width: 120px;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <img src="SQ_logo.png" class="logo-icon" alt="logo">
+  <img src="SQ_text.png" class="logo-word" alt="SyndiQ text">
+  <div class="title">Secondary Market</div>
+</div>
+
+<h2>Secondary Market</h2>
+
+<div class="panel">
+
+  <h3>Your Wallet</h3>
+  <p>💰 Cash: €<span id="cash">10,000</span> | 📊 Units: <span id="units">0</span></p>
+
+  <h3>Place Order</h3>
+  <div class="order-row">
+    <select id="side">
+      <option>BUY</option>
+      <option>SELL</option>
+    </select>
+    <input id="qty" type="number" placeholder="Units" min="1">
+    <input id="price" type="number" placeholder="Price (€)" step="0.01">
+    <button id="place">Place Order</button>
+  </div>
+
+  <h3>Order Book</h3>
+  <table>
+    <thead><tr><th>Side</th><th>Qty</th><th>Price (€)</th></tr></thead>
+    <tbody id="book"><tr><td colspan="3">No orders</td></tr></tbody>
+  </table>
+
+  <h3>Recent Trades</h3>
+  <table>
+    <thead><tr><th>Time</th><th>Qty</th><th>Price (€)</th></tr></thead>
+    <tbody id="trades"><tr><td colspan="3">No trades</td></tr></tbody>
+  </table>
+
+</div>
+
+<script>
+const el = id => document.getElementById(id);
+let wallet = { cash: 10000, units: 0 };
+let orderbook = [];
+let trades = [];
+let lastId = 1;
+
+function render() {
+  el('cash').textContent = wallet.cash.toFixed(2);
+  el('units').textContent = wallet.units;
+
+  const b = el('book');
+  b.innerHTML = orderbook.length ? '' : '<tr><td colspan="3">No orders</td></tr>';
+  orderbook.forEach(o => {
+    b.innerHTML += `
+      <tr><td>${o.side}</td><td>${o.qty}</td><td>${o.price.toFixed(2)}</td></tr>
+    `;
+  });
+
+  const t = el('trades');
+  t.innerHTML = trades.length ? '' : '<tr><td colspan="3">No trades</td></tr>';
+  trades.slice(-10).reverse().forEach(trd=>{
+    t.innerHTML += `
+      <tr><td>${trd.time}</td><td>${trd.qty}</td><td>${trd.price.toFixed(2)}</td></tr>
+    `;
+  });
+}
+
+function match() {
+  let buys = orderbook.filter(o => o.side==='BUY').sort((a,b)=>b.price-a.price);
+  let sells = orderbook.filter(o => o.side==='SELL').sort((a,b)=>a.price-b.price);
+
+  while(buys.length && sells.length && buys[0].price >= sells[0].price) {
+    const qty = Math.min(buys[0].qty, sells[0].qty);
+    const price = (buys[0].price + sells[0].price)/2;
+
+    trades.push({time:new Date().toLocaleTimeString(), qty, price});
+
+    buys[0].qty -= qty;
+    sells[0].qty -= qty;
+
+    if(buys[0].qty<=0) orderbook.splice(orderbook.indexOf(buys[0]),1);
+    if(sells[0].qty<=0) orderbook.splice(orderbook.indexOf(sells[0]),1);
+
+    buys = orderbook.filter(o=>o.side==='BUY').sort((a,b)=>b.price-a.price);
+    sells = orderbook.filter(o=>o.side==='SELL').sort((a,b)=>a.price-b.price);
+  }
+}
+
+el('place').onclick = ()=>{
+  const side = el('side').value;
+  const qty = parseInt(el('qty').value);
+  const price = parseFloat(el('price').value);
+
+  if(!qty || !price){ alert('Enter valid values'); return; }
+
+  if(side==='BUY' && wallet.cash < qty*price){
+    alert('Not enough cash');
+    return;
+  }
+  if(side==='SELL' && wallet.units < qty){
+    alert('Not enough units');
+    return;
+  }
+
+  orderbook.push({id:lastId++, side, qty, price});
+  
+  if(side==='BUY'){ wallet.cash -= qty*price; wallet.units += qty; }
+  if(side==='SELL'){ wallet.units -= qty; wallet.cash += qty*price; }
+
+  match();
+  render();
+};
+
+render();
+</script>
+</body>
+</html>
